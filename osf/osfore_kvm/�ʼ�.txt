@@ -1,0 +1,392 @@
+make EXTRA_CFLAGS=-I$(xxx)
+
+
+
+IRQ和Softirq上下文：
+抢占：
+原子上下文和可睡眠环境：
+
+IRQ和Softirq：
+
+IRQ来了以后，这个引脚的中断会被一直占用直到完成。
+
+
+1：CPU出发中断，并且本CPU中断被禁用
+2：保存上下文，在IDT中找到中断函数
+3：IRQ ACK ->出发EOI，end of interrupt  这里就是中断上半部与下半部的分界点。
+4：运行中断处理函数
+5：回复中断
+
+问题：
+1）如果中断函数中需要做的好事操作比较多：
+会将CPU的中断一直保存禁止状态，可能导致其他中断被丢失
+2）softirq因此而生，他将中断操作分两部分
+一部分是在禁止中断中快速的完成，被称为上半部
+另一部分可以在打开中断情况下完成，这一部分相对于第一部分要耗时，被称为下半部
+
+网卡在dma中取包，需要禁用中断，是防止在取包的时候防止有其他包到来  
+
+do_IRQ：是找寻所有相应中断号处理函数，并调用这些函数的入口；
+
+do_IRQ->irq_exit->invoke_softirq->__do_softirq   通过这个流程来了解，中断的打开和关闭时机
+
+
+抢占：
+简言之，抢占就是当将当前的调度实体（进程或线程）切换出CPU然后当下一个调度实体切换上CPU
+抢占的时机：
+1）主动放弃CPU（调用 schedule()）
+2）从中断/异常处理退出时
+3）自定义的某些点（cond_resched())
+cond_resched的例子：
+
+kvm_mmu_sync_roots-> mmu_sync_roots-> mmu_sync_children->__code_resched_lock
+
+原子上下文和可睡眠环境：
+1）原子上下文即不可被切换出CPU的状态，也即不可睡眠状态，与可睡眠环境相反
+2）原子上下文包括：
+    在处理IRQ的时候
+    在处理softirq的时候
+    在抢占被禁用的时候   
+与原子上下文相关的code
+    每一个进程（包括线程）都维护者一个preempt_count:
+    #define preemt_count() (current_thread_info()->preempt_count
+    如果进程切换了？之前的进程计数是不是会被丢弃？   只要这个计数不为零，就不能被切换；
+    perrmpt_count的组织
+    0-7bit->preemption count
+    8-15bit->softirqcount
+    16-25:hardirq count
+    26bit:NMI
+    27bit:
+    28-31bit:preempt_cative
+    
+    #define __irq_enter()
+    #define __irq_exit()
+    #define __nmi_enter()
+    #deinfe __nmi_exit()
+    peermpt_count_add()
+    peermpt_count_add()
+    peermpt_count_sub()
+    
+    
+    #define sched_preempt_enable_no_resched()
+    #define preempt_enable_no_resched()
+    #define preemt_enable()
+    #define preempt_disable()
+    
+    #define in_atomic():检测是否是原子环境;
+
+内核同步：
+1：锁
+2：原子操作
+3：内存屏障
+4：代码分析：锁的实现
+
+锁：
+1）用于串行操作，避免竞争
+2）两种主要类型
+    -不可睡眠的锁
+    -可睡眠的锁
+不可睡眠的锁：
+1）自旋锁
+    -所谓自旋锁，就是资源得不到满足时候，就一直去探测资源。
+    -自旋锁会自动关闭当前CPU的抢占
+    -所以，在持有自旋锁后不应该有睡眠的操作。例如：a）分配内存的时候，如果内存不足，可能就需要当前进程睡眠，方便mm后台回收内存；b）当持有自旋锁的时候，试图去获得可睡眠的锁也是不可以的。
+2）APIs
+    初始化：
+        编译时候初始化：DEFINE_SPINLOCK()
+        运行时候初始化：spin_lock_init()
+    持有锁与释放锁
+        spin_lock()/spin_unlock
+
+自旋锁的变体
+    禁用中断+自旋锁
+        spin_lock_irq()/spin_unlck_irq()
+        spin_lock_irqsave()/spin_unlock_irqrestore()
+    禁止下半部+自旋锁
+        spin_lock_bh()/spin_unlock__bh()    
+读写自旋锁：
+    读写锁的一种，用于读操作非常频繁而写操作频率很低，他可以降低读侧开销， 
+允许读侧并行，但提高写测开销。
+    APIs
+        初始化：DEFINE_RWLOCK()/rwlock_init()
+        read_lock()/read_unlock();write_lock()
+        /write_lock()
+        irqsave...等等变体与spinlock类似
+RCU（也是不可睡眠锁）        
+    
+问题？1、抢占禁用的时候，能否被中断
+      2、为什么要单独设置中断上下文?
+      
+答疑的笔记：
+模块签名是3.7kernel里面新增的功能；
+
+与数字签名相关的几个配置选项：
+CONFIG_MODULE_SIG_FORCE
+CONFIG_MODULE_SIG_ALL
+CONFIG_SIG_SHA1到CONFIG_SIG_SHA512
+如何手动签名?
+
+a)内核实现一个设备供用户空间来操作.
+b)netlink
+c)扩展系统调用
+
+
+问题：就是把第一个模块的符号表拷贝到第二个模块里头，是不是仅仅为了 不让编译时候提示找不到符号的警告？
+1)不警告
+2)产生模块依赖关系，让modprob进行模块依赖测试；
+
+insmod 具体做的什么 工作？
+用户空间会调用 load_module()，然后解析ELF文件，然后解析各个段（代码段.数据段等等）映射到相应的地方，能够被调用； 
+insmod => 解释ELF， 加载ELF到对应的位/生成符号表
+debug 的ELF 和 Release的ELF 主要区别是什么?readelf 
+debug 是打开了gcc -g的调试命令。就含有了函数的符号表，以及一些调用关系，都能方便找到
+relese 为了考虑到cache的优化使用和image的大小，都会省略掉debug info
+ 
+preempt的每个位数都是预留好的，是否可能发生溢出呢？
+1：如果出现bug可能溢出；正常情况下是不会溢出的；
+2：例子：内核社区的一个例子：有人报告了一个BUG，提示SOFTIRQ 
+
+COUNT被溢出了，因为软中断执行的时间过长，导致嵌套次数过多。
+最后分析得到的结论是，RCU的CALLBACK太多了。RCU的CALLBACK允许被迁移可以迁移到其他CPU。
+
+软中断的线程是每次报软中断都会执行的吗，还是只在软中断执行时间过久时才会启动？
+在软中断繁忙时被启动
+有参数可以设定为一直用线程来处理软中断
+
+用户空间可以使用自旋锁吗？
+不可以
+
+Preemption count、softirq count、hadrdirq cout、nmi的作用分别是？
+Preemption count = 每次禁用抢占的时候+1、softirq count = 每次执行软中断的时候+1、hadrdirq cout = 每次执行中断的时候+1、nmi= 每次发生NMI的时候+1
+
+
+有几种是 睡眠锁 ？
+睡眠锁： MUTEX， 还有RCU配置成可抢占的时候
+
+Preemption count、softirq count、hadrdirq cout、nmi 有可能同时发生吗？
+不能同时，但可以连续， 比如hardirq -> softirq -> PREE. 不可能同时增加
+ 
+在编写 模块的时候 不会被调用的函数 会被编译到模块中去吗？有编译开关吗？
+按照内核的优化级别的话，可以自动丢掉的。
+
+LWN.net会对每个内核的改动说明;
+知道内核差异：
+1：mail list
+2：release changelog
+
+https://www.ibm.com/developerworks/cn/linux/l-cn-ftrace/
+ftrace是一个比较好的料及内核的工具；
+
+
+rcu和内存屏障？
+
+ 内核的一个基本原则就是：在中断或者说原子上下文中，内核不能访问用户空间，而且内核是不能睡眠的。也就是说在这种情况下，内核是不能调用有可能引起睡眠的任何函数。一般来讲原子上下文指的是在中断或软中断中，以及在持有自旋锁的时候。
+ 
+ 
+ 不可睡眠锁：
+ 
+ kthread_should_stop()是用来判断，是否这个进程被执行了kthread_stop()
+ 在线程中可以这么使用：
+     while(!kthread_should_stop()){
+         msleep(10); //delay.h
+     }
+可睡眠锁：
+
+RCU
+读写锁；写端延迟较大；
+1）老版本中写着的时延相对要大一些，所以在实时性要求较高的场景，在新的版本中增加了一个配置选项。
+2）CONFIG_PREEMPT_RCU 配置选项是来配置，读是否被抢占；
+3） rcu的读者基本无需枷锁，但是他吧所得时间放在了写的时候；
+4） note：
+    只用来保护指针，因为指针的引用和指针的赋值在所有平台都是不可中断的（即为原子操作）
+	如果写着比较多，不要使用RCU
+	CONFIG_PREEMPT_RCU用于real time很强的场合，为了更好的代码移植，最好不要这么做。尽可能的不要将rcu用于可睡眠的场合（为什么？？）
+RCU的使用：
+    用rcu保护的数据需要 在之前增加 __rcu
+	例如：void __rcu *data;
+    读者：
+        1、使用RCU_READ_LOCK()来进入读测
+        2、使用rcu_derference()来获取指针对应的资源
+        3、使用rcu_read_unlock()来推出读侧
+    写着：
+        1、如果有多个写端，需要写端自己做同步（例如使用spinlock）
+        2、使用rcu_assign_pointer()来更新指针
+        3、使用call_rcu()/synchronize_rcu()来释放旧指针对应的资源		
+        
+	使用：
+	    call_rcu()和synchronize_rcu()的区别
+		-call_rcu()用来释放的工作交给后台，可以快速的返回，不会导致睡眠
+		-synchronize_rcu()会等待所有读者退出后再返回，会导致睡眠
+	rcu的变体：
+	    defer              protect
+	a. synchronize_rcu()      rcu_read_lock()/rcu_read_unlock()
+	b. call_rcu_bh()          rcu_read_lock_bh()/rcu_read_unlock_bh()
+	                          rcu_dereference_hb()
+	c. synchronize_sched()    rcu_read_lock_sched() / rcu_read_unlock_sched()
+	                          preempt_disable()/preempt_enable()
+							  local_irq_save()/local_irq_restore()
+							  hardirq enter/ hardirq exit
+							  NMI enter / NMI exit
+							  rcu_dereference_sched()
+							  
+	code事例：
+	do_write(){
+        rcu_assign_pointer();
+        synchronize_rcu();
+    
+    }
+    
+    do_read(){
+        rcu_read_lock()；
+        临界区；
+        rcu_read_unlock()；
+    }
+
+可睡眠锁：
+    - 一次只能被一个对象所持有
+	- 类似于用户间glibc中的pthread_mutext_lock一样的
+	- 持有mutex后任然可以睡眠（可以被调度出去）
+	
+ Mutex（互斥量）
+    -使用
+       #include <linux/mutex.h>
+     初始化：  
+        -编译时初始化： DEFINE_MUTEX()
+        -运行时初始化：mutex_init()
+     持有锁：
+	    -mutex_lock() ->在临界区不响应，任何信号（信号来了，不响应，那么信号呢？是等这个线程被唤醒后，再响应信号？还是就相当于信号丢失了？）
+		-mutex_lock_interruptible()->在临界区相应信号（相应的行为？那么对中断的处理呢？mutex_lock对锁的处理呢）
+		-mutex_lock_kilable()->只响应SIGKILL的信号
+      释放锁
+        - mutex_unlock()	 
+
+     code实例：
+     do_write(){
+     
+     }
+     
+     do_read(){
+     
+     } 
+        
+可睡眠锁：
+   semaphore（信号量）
+    -信号量的值可以大于1
+    -持有锁时
+        如果当前值为0，则睡眠，等值信号量的值变为非0
+        否则，信号值的值减1
+    -释放锁时
+        将信号量的值加1，如果有进程等待该信号量则将其唤醒
+	
+   semaphore使用
+     - #include <linux/semaphore.h>
+     - 初始化：
+        编译时初始化 DEFINE_SEMPHORE(sem)
+        运行时初始化 sema_init(sem, val)
+     - 持有锁
+        down()
+        down_interruptible()
+        down_killable()
+     - 释放锁
+        up()    
+    
+    code实例：
+    do_write(){
+        
+    }
+
+    do_read(){
+    
+    }    
+    
+   rwsem(读写信号量)
+     - 读写锁
+     - 只有一个值， 空闲时为1，被使用时为0     
+     
+     一个临界区允许多个读端，但是只允许你哥写端
+     
+     -使用
+        #include <linux/rwsem.h>
+        初始化
+           -编译时初始化 DECLARE_RWSEM()
+           -运行时初始化init_rwsem()
+        读者
+           -持有锁 down_read()
+           -释放锁 up_read()
+        写者
+           -持有锁 down_write()
+           -释放锁 up_write()
+        
+        code实例
+        do_write(){
+        
+        }
+        
+        do_read(){
+        
+        }
+完成变量
+    completion 用于一种显示的等待事件（与锁的区别：一个进程等待另一进程完成某个事情
+     所以自己要睡眠，等待另一个事情完成后才被唤醒）
+    初始化
+       - 编译时初始化 DECLARE_COMPLETION()
+       - 运行时初始化 init_completion()
+    等待事件
+       - wait_for_completion()/wait_for_complention_interruptible()/
+         wait_for_completion_killable()/wait_for_completion_io()/
+         wait_for_completion_xxx_timeout
+    事情完成
+       complete()/complete_all()
+          complete()只会唤醒一个正在等待的进程而complete_all()则唤醒全部 
+        #include <complete.h>
+        
+        code实例
+        do_write(){
+        
+        }
+        
+        do_read(){
+        
+        }
+可睡眠锁：
+ -RCU （if  CONFIG_PREEMPT_RCU 如果这种配置是可睡眠的）
+ -SRCU （sleepable RCU） 
+    -持有 SRCU的一侧可以睡眠
+    -使用同普通的RCU类似  
+
+  -使用
+      - #include <linux/srcu.h>
+      初始化
+       -编译时初始化 DEFINE_SRCU()/DEFINE_STATIC_SRCU()
+       -运行时初始化 init_srcu_struct()
+      
+      读者
+        获得锁 srcu_read_lock()
+        获得保护的指针 srcu_dereference() //多了一个check，会check是否已经获得了srcu的锁，相对于rcu来说
+        释放锁 srcu_read_unlock()
+      
+      写者释放旧指针 synchronize_srcu()/call_srcu()
+      使用完成 cleanup_srcu_struct()      
+      
+      code实例
+      do_write() {
+         srcu_ 
+      }
+      
+      do_read() {
+          
+      }
+ 
+用户态的锁，在等待的时候，会陷入到内核，然后内核会使用futx休眠。 
+禁用了中断就自动禁用抢占了
+schedule的表现行为：1、内核抢占；2、主动调度；3、
+调试方法：kdump
+memory-barriers.txt
+atomic-oprations是叫portin
+http://eudyptula-challenge.org      
+原子操作：
+内存屏障：先网上搜搜          
+      
+ 
+ 
+ 

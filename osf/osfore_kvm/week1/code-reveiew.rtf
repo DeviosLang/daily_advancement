@@ -1,0 +1,113 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1265\cocoasubrtf190
+{\fonttbl\f0\fswiss\fcharset0 ArialMT;\f1\fnil\fcharset134 STHeitiSC-Light;}
+{\colortbl;\red255\green255\blue255;\red38\green38\blue38;}
+\margl1440\margr1440\vieww10800\viewh8400\viewkind0
+\deftab720
+\pard\pardeftab720\sa56
+
+\f0\fs28 \cf2 rb.c \'a0-------\
+#include <linux/module.h>\uc0\u8232 #include <linux/slab.h>\u8232 #include <linux/spinlock.h>\u8232 #include <linux/err.h>\u8232 #include <linux/kthread.h>\u8232 #include <asm/atomic.h>\u8232 #include <linux/mutex.h>\u8232 #include <linux/reboot.h>\u8232 #include "rb.h"\u8232 \u8232 MODULE_LICENSE("GPL");\u8232 MODULE_AUTHOR("devios lang");\u8232 \u8232 /* 
+\f1 \'cb\'b5\'c3\'f7
+\f0 :
+\f1 \'b4\'f2\'d3\'a1\'d3\'d0\'b5\'e3\'b6\'f9\'d0\'d7\'a3\'ac\'bf\'c9\'c4\'dc\'d4\'da\'d0\'e9\'c4\'e2\'bb\'fa\'cf\'c2\'bb\'e1\'b5\'bc\'d6\'c2\'bb\'fa\'c6\'f7\'b1\'e4\'b5\'c3\'ba\'dc\'c2\'fd
+\f0 \'a0\uc0\u8232 
+\f1 \'bb\'f9\'b1\'be\'cb\'bc\'c2\'b7\'be\'cd\'ca\'c7\'ca\'b9\'d3\'c3
+\f0  
+\f1 \'c1\'b4\'b1\'ed\'ca\'b5\'cf\'d6\'c1\'cb\'d2\'bb\'b8\'f6\'d1\'ad\'bb\'b7\'b5\'c4
+\f0 buffer*/\uc0\u8232 \u8232 /* write
+\f1 \'d4\'da\'cf\'f2\'bb\'b7\'d6\'d0\'d4\'f6\'bc\'d3
+\f0 data
+\f1 \'a3\'ac
+\f0 read
+\f1 \'b4\'d3\'bb\'b7\'d6\'d0\'b6\'c1\'c8\'a1
+\f0  */\uc0\u8232 static int nreaders = 1;\u8232 static int nwriters = 1;\u8232 static int ring_buffer_size = 10;\u8232 \u8232 static struct task_struct **writer_tasks;\u8232 static struct task_struct **reader_tasks;\u8232 struct ring_buffer *g_rb = NULL;\u8232 struct info *g_writer_info = NULL;\u8232 int *g_reader_id = NULL;\u8232 static int verbose = 1; /* Print more debug info. */\u8232 \u8232 module_param(nreaders, int, 0444);\u8232 MODULE_PARM_DESC(nreaders, "Number of ring buffer reader threads");\u8232 \u8232 module_param(nwriters, int, 0444);\u8232 MODULE_PARM_DESC(nwriters, "Number of ring buffer writer threads");\u8232 \u8232 module_param(verbose, int, 0444);\u8232 MODULE_PARM_DESC(verbose, "Enable verbose debugging printk()s");\u8232 \u8232 #define VERBOSE_PRINTK_STRING(s) \\\u8232 \'a0 \'a0 \'a0 \'a0 do \{ if (verbose) printk(KERN_ALERT "haha:%s\\n", s); \} while (0)\u8232 #define VERBOSE_PRINTK_ERRSTRING(s) \\\u8232 \'a0 \'a0 \'a0 \'a0 do \{ if (verbose) printk(KERN_ALERT "haha:%s!!!\\n", s); \} while (0)\u8232 \u8232 \u8232 #define FULLSTOP_DONTSTOP 0 /* Normal operation. */\u8232 #define FULLSTOP_SHUTDOWN 1 /* System shutdown with rcutorture running. */\u8232 #define FULLSTOP_RMMOD \'a0 \'a02 /* Normal rmmod of rcutorture. */\u8232 static int fullstop = FULLSTOP_RMMOD;\u8232 DEFINE_MUTEX(fullstop_mutex); /* Protect fullstop transitions and spawning */\u8232 \u8232 static void copy_data_to_rb(void** to, void* from)\u8232 \{\u8232 \'a0 \'a0 *to = from;\u8232 \}\u8232 \u8232 static void* read_data_from_rb(void* data)\u8232 \{\u8232 \'a0 \'a0 return data;\u8232 \}\u8232 \u8232 \u8232 static struct ring_buffer* ring_buffer_alloc(int size)\u8232 \{\u8232 \'a0 \'a0 struct ring_buffer* rb = NULL;\u8232 \'a0 \'a0 rb = kzalloc(sizeof(struct ring_buffer), GFP_KERNEL);\u8232 \'a0 \'a0 if (!rb)\{\u8232 \'a0 \'a0 \'a0 \'a0 return NULL;\u8232 \'a0 \'a0 \}\
+\
+    /* Eric: 
+\f1 \'d5\'e2\'d2\'bb\'be\'e4\'bf\'cf\'b6\'a8\'ca\'c7\'b6\'e0\'d3\'e0\'b5\'c4. :) 
+\f0 */\uc0\u8232 \'a0 \'a0 rb = kzalloc(sizeof(struct ring_buffer), GFP_KERNEL);\
+\
+    /* \
+     * Eric: ring buffer
+\f1 \'d6\'d0\'c3\'bb\'d3\'d0\'ca\'b9\'d3\'c3\'b5\'bd\'c8\'ce\'ba\'ce\'d3\'ebsize\'b4\'f3\'d0\'a1\'d3\'d0\'b9\'d8\'b5\'c4\'bd\'e1\'b9\'b9,\
+      * \'c4\'dc\'b7\'f1\'c9\'e8\'bc\'c6\'d2\'bb\'b8\'f6\'b6\'d4\'b4\'f3\'d0\'a1\'ce\'de\'cf\'de\'d6\'c6\'b5\'c4ring buffer? \
+      
+\f0 */\uc0\u8232 \'a0 \'a0 rb->size = size;\
+\
+    /*\
+     * Eric: ->cur_size
+\f1 \'bf\'b4\'c6\'f0\'c0\'b4\'d6\'bb\'ca\'c7\'d3\'c3\'c0\'b4\'c5\'d0\'b6\'cf\'ca\'c7\'b7\'f1\'ce\'aa\'c2\'fa\'bb\'f2\'ce\'aa\'bf\'d5
+\f0 , 
+\f1 \'bf\'c9\'d2\'d4\'d3\'c3
+\f0 \
+     * list_is_empty()
+\f1 \'b4\'fa\'cc\'e6
+\f0 ?\
+     */\uc0\u8232 \'a0 \'a0 rb->cur_size = 0;\u8232 \'a0 \'a0 INIT_LIST_HEAD(&rb->head);\u8232 \'a0 \'a0 spin_lock_init(&rb->lock);\u8232 \'a0 \'a0 printk(KERN_INFO "haha:alloc rb\\n");\u8232 \'a0 \'a0 return rb;\u8232 \}\u8232 \u8232 static int ring_buffer_write(struct ring_buffer* rb, void* data)\u8232 \{\u8232 \'a0 \'a0 struct ring_buffer_node *node;\u8232 \'a0 \'a0 node = kzalloc(sizeof(struct ring_buffer_node), GFP_KERNEL);\u8232 \'a0 \'a0 if (NULL == node)\u8232 \'a0 \'a0 \{\u8232 \'a0 \'a0 \'a0 \'a0 \'a0return -1;/*-ENOMEM*/; \'a0 \'a0 \'a0 \'a0\'a0\u8232 \'a0 \'a0 \}\u8232 \'a0 \'a0\'a0\u8232 \'a0 \'a0 spin_lock(&rb->lock);\u8232 \'a0 \'a0 if (rb->cur_size == rb->size)\u8232 \'a0 \'a0 \{\u8232 \'a0 \'a0 \'a0 \'a0 spin_unlock(&rb->lock);\u8232 kfree(node);\u8232 \'a0 \'a0 \'a0 \'a0 return -1; /*full*/\u8232 \'a0 \'a0 \}\u8232 \'a0 \'a0 rb->cur_size++;\u8232 \'a0 \'a0 copy_data_to_rb(&node->data, data);\u8232 \'a0 \'a0 list_add_tail(&node->node, &rb->head);/*
+\f1 \'ce\'b2\'b2\'bf\'bc\'d3\'a3\'ac\'b4\'d3\'cd\'b7\'b2\'bf\'c8\'a1
+\f0 */\uc0\u8232 \'a0 \'a0 spin_unlock(&rb->lock);\u8232 \'a0 \'a0 return 0;\u8232 \}\u8232 \u8232 static void *ring_buffer_read(struct ring_buffer* rb)\u8232 \{\u8232 \'a0 \'a0 struct list_head *list_node;\u8232 \'a0 \'a0 struct ring_buffer_node *node;\u8232 \'a0 \'a0 void *data;\u8232 \'a0 \'a0 spin_lock(&rb->lock);\u8232 \'a0 \'a0 if (0 == rb->cur_size)\u8232 \'a0 \'a0 \{\u8232 \'a0 \'a0 \'a0 \'a0 spin_unlock(&rb->lock);\u8232 \'a0 \'a0 \'a0 \'a0 return NULL;/*empty*/ \'a0\'a0\u8232 \'a0 \'a0 \}\u8232 \'a0 \'a0 list_node = rb->head.next;\u8232 \'a0 \'a0 list_del(list_node); \u8232 \'a0 \'a0 rb->cur_size--;\u8232 spin_unlock(&rb->lock);\
+\
+/* \
+ * 
+\f1 Eric: \'d5\'e2\'c0\'ef\'d4\'cb\'d0\'d0\'ca\'c7ok\'b5\'c4, \'b5\'ab\'cb\'fc\'d2\'c0\'c0\'b5\'d3\'da\'d4\'dastruct ring_bffer_node\'d6\'d0, node\
+ * \'ca\'c7\'b5\'da\'d2\'bb\'b8\'f6\'b3\'c9\'d4\'b1, \'ce\'aa\'c1\'cb\'c8\'c3\'b4\'fa\'c2\'eb\'b8\'fc\'bc\'d3\'bd\'a1\'d7\'b3,  \'bf\'c9\'d2\'d4\'d3\'c3list_entry()\'cc\'e6\'bb\'bb\'b5\'f4\'d5\'e2\'b8\'f6\'c7\'bf\'d6\'c6\'d7\'aa\'bb\'bb\
+ 
+\f0 */\uc0\u8232 \'a0 \'a0 node = (struct ring_buffer_node*)list_node;\
+\uc0\u8232 data = node->data;\u8232 \'a0 \'a0 kfree(node);\u8232 \'a0 \'a0 return read_data_from_rb(data); \'a0\'a0\u8232 \}\u8232 \u8232 static void ring_buffer_free(struct ring_buffer* rb)\u8232 \{\u8232 \'a0 \'a0 struct list_head *n;\u8232 \'a0 \'a0 struct list_head *pos;\u8232 \'a0 \'a0 spin_lock(&rb->lock);\u8232 \'a0 \'a0 list_for_each_safe(pos, n, &rb->head)\u8232 \'a0 \'a0 \{\
+/* Eric: 
+\f1 \'c4\'da\'b4\'e6\'d0\'b9\'c2\'b6
+\f0 , 
+\f1 \'cd\'fc\'bc\'c7\'ca\'cd\'b7\'c5 ring_buffer_node-> data. 
+\f0 */\uc0\u8232 \'a0 \'a0 \'a0 \'a0 list_del(pos);\u8232 kfree(pos);\
+\uc0\u8232 \'a0 \'a0 \}\u8232 \'a0 \'a0 spin_unlock(&rb->lock);\u8232 \'a0 \'a0 kfree(rb); \'a0 \'a0 \'a0 \'a0\u8232 \}\u8232 \u8232 static int ring_buffer_resize(struct ring_buffer* rb, int new_size)\u8232 \{\u8232 \'a0 \'a0 spin_lock(&rb->lock);\u8232 \'a0 \'a0 if(rb->cur_size < new_size)\{\u8232 \'a0 \'a0 \'a0 \'a0 rb->size = new_size;\u8232 \'a0 \'a0 \'a0 \'a0 spin_unlock(&rb->lock);\u8232 \'a0 \'a0 \'a0 \'a0 return 0;\u8232 \'a0 \'a0 \}\u8232 spin_unlock(&rb->lock);\u8232 \'a0 \'a0 return -1; /*
+\f1 \'cc\'ab\'b6\'cc\'c1\'cb\'a3\'ac\'c6\'e4\'cb\'fb\'b1\'bb\'d5\'bc\'d3\'c3
+\f0 */\uc0\u8232 \'a0 \'a0 \'a0 \'a0 \'a0\u8232 \}\u8232 /*
+\f1 \'c1\'b4\'b1\'ed
+\f0 -------------------------------------------------end*/\uc0\u8232 \u8232 static int rb_writer(void *arg)\u8232 \{\u8232 \'a0\'a0\u8232 \'a0 \'a0 long long data;\u8232 \'a0 \'a0 long long id = ((struct info*)arg)->id;\u8232 \'a0 \'a0 id <<= 32;\u8232 \'a0\u8232 \'a0 \'a0 VERBOSE_PRINTK_STRING("rb_writer task started");\u8232 \'a0 \'a0 set_user_nice(current, 19);\u8232 \u8232 \'a0 \'a0 do \{\
+\
+/* Eric: arg->data 
+\f1 \'d4\'da\'b4\'ab\'b5\'dd\'b4\'a6\'b2\'a2\'c4\'a9\'bd\'f8\'d0\'d0\'b3\'f5\'ca\'bc\'bb\'af, \'d2\'b2\'be\'cd\'ca\'c7\'cb\'b5 arg->data == NULL. 
+\f0 */\uc0\u8232 \'a0 \'a0 \'a0 \'a0 data = (long long)(((struct info*)arg)->data);\u8232 \'a0 \'a0 \'a0 \'a0 data &= id;\u8232 \'a0 \'a0 \'a0 \'a0 ring_buffer_write(g_rb, (void*)data);\
+\
+/* 
+\f1 Eric: arg->id\'b5\'c4\'b4\'ab\'b5\'dd\'b4\'a6\'b2\'a2\'c3\'bb\'d3\'d0\'bd\'f8\'d0\'d0\'b3\'f5\'ca\'bc\'bb\'af, \'d2\'b2\'be\'cd\'ca\'c7\'cb\'b5arg->id ==  0. 
+\f0 */\
+\uc0\u8232 \'a0 \'a0 printk("rb_writer my ID %d write data:%lld\\n", ((struct info*)arg)->id, data);\u8232 \'a0 \'a0 \'a0 \'a0 ((struct info*)arg)->data = (void*)(data + 1);\u8232 \'a0 \'a0 \} while (!kthread_should_stop() && fullstop == FULLSTOP_DONTSTOP);\u8232 \u8232 \'a0 \'a0 VERBOSE_PRINTK_STRING("rb_writer task stopping");\u8232 \'a0 \'a0 while (!kthread_should_stop())\u8232 \'a0 \'a0 \'a0 \'a0 schedule_timeout_uninterruptible(1);\u8232 \'a0 \'a0 return 0; \'a0 \'a0\u8232 \}\u8232 \u8232 static int rb_reader(void *arg)\u8232 \{\u8232 \'a0 \'a0 void *data;\u8232 \'a0 \'a0 VERBOSE_PRINTK_STRING("rcu_torture_reader task started");\u8232 \'a0 \'a0 set_user_nice(current, 19);\u8232 \'a0 \'a0 do \{\
+\
+/* Eric: 
+\f1 \'b6\'c1\'b3\'f6\'c0\'b4\'b5\'c4
+\f0 data
+\f1 \'b2\'bb\'d0\'e8\'d2\'aa\'b1\'bb
+\f0  free? */\uc0\u8232 \'a0 \'a0 \'a0 \'a0 data = ring_buffer_read(g_rb);\u8232 \'a0 \'a0 printk("rb_reader my ID %d my data:%lld\\n", *((int*)arg), (long long)data);\u8232 \'a0 \'a0 \} while (!kthread_should_stop() && fullstop == FULLSTOP_DONTSTOP);\u8232 \u8232 \'a0 \'a0 VERBOSE_PRINTK_STRING("rcu_torture_reader task stopping");\u8232 \'a0 \'a0 while (!kthread_should_stop())\u8232 \'a0 \'a0 \'a0 \'a0 \'a0schedule_timeout_uninterruptible(1);\u8232 \'a0 \'a0 return 0;\u8232 \}\u8232 \u8232 /*\u8232 \'a0* Detect and respond to a system shutdown.\u8232 \'a0*/\u8232 static int\u8232 rb_shutdown_notify(struct notifier_block *unused1,\u8232 \'a0 unsigned long unused2, void *unused3)\u8232 \{\u8232 mutex_lock(&fullstop_mutex);\u8232 if (fullstop == FULLSTOP_DONTSTOP)\u8232 fullstop = FULLSTOP_SHUTDOWN;\u8232 else\u8232 printk(KERN_WARNING /* but going down anyway, so... */\u8232 \'a0 \'a0 \'a0 "Concurrent 'rmmod rb' and shutdown illegal!\\n");\u8232 mutex_unlock(&fullstop_mutex);\u8232 return NOTIFY_DONE;\u8232 \}\u8232 static struct notifier_block rb_nb = \{\u8232 .notifier_call = rb_shutdown_notify,\u8232 \};\u8232 \u8232 static void\'a0\u8232 ring_buffer_exit(void)\u8232 \{\u8232 \'a0 \'a0 int i;\u8232 \'a0 \'a0 mutex_lock(&fullstop_mutex);\u8232 if (fullstop == FULLSTOP_SHUTDOWN) \{\u8232 printk(KERN_WARNING /* but going down anyway, so... */\u8232 \'a0 \'a0 \'a0 "Concurrent 'rmmod rbtorture' and shutdown illegal!\\n");\u8232 mutex_unlock(&fullstop_mutex);\u8232 \u8232 return;\u8232 \}\u8232 \u8232 fullstop = FULLSTOP_RMMOD;\u8232 mutex_unlock(&fullstop_mutex);\u8232 \u8232 unregister_reboot_notifier(&rb_nb);\u8232 if (writer_tasks)\{\u8232 \'a0 \'a0 \'a0 \'a0 for (i = 0; i < nwriters; i++) \{\u8232 \'a0 \'a0 \'a0 \'a0 if (writer_tasks) \{\u8232 VERBOSE_PRINTK_STRING("Stopping rb_writer task");\u8232 kthread_stop(writer_tasks[i]);\u8232 \}\'a0\u8232 writer_tasks[i] = NULL;\u8232 \}\u8232 kfree(writer_tasks);\u8232 writer_tasks = NULL;\u8232 \}\u8232 \u8232 if (reader_tasks)\{\u8232 \'a0 \'a0 \'a0 \'a0 for (i = 0; i < nreaders; i++) \{\u8232 \'a0 \'a0 \'a0 \'a0 if (reader_tasks[i]) \{\u8232 VERBOSE_PRINTK_STRING(\u8232 "Stopping rb_reader task");\u8232 kthread_stop(reader_tasks[i]);\u8232 \}\'a0\u8232 reader_tasks[i] = NULL;\u8232 \}\u8232 kfree(reader_tasks);\u8232 reader_tasks = NULL;\u8232 \}\u8232 ring_buffer_free(g_rb);\u8232 \'a0 \'a0 \'a0 \'a0 kfree(g_writer_info);\u8232 \'a0 \'a0 \'a0 \'a0 kfree(g_reader_id);\'a0\u8232 g_rb = NULL;\u8232 \}\u8232 \u8232 \u8232 static int __init\u8232 ring_buffer_init(void)\u8232 \{\u8232 \'a0 \'a0 int i;\u8232 \'a0 \'a0 int firsterr = 0;\
+\
+/* \
+* Eric: nreaders nwriters 
+\f1 \'d2\'c0\'c0\'b5\'d3\'da\'d3\'c3\'bb\'a7\'bf\'d5\'bc\'e4\'d6\'b8\'b6\'a8\'b5\'c4\'c4\'a3\'bf\'e9\'b2\'ce\'ca\'fd\'d6\'b5, \'d3\'c3BUG_ON\'c0\'b4\'bd\'f8\'d0\'d0\
+* \'d5\'e2\'d6\'d6\'ca\'e4\'c8\'eb\'c5\'d0\'b6\'cf\'ca\'c7\'ba\'dc\'b2\'bb\'b0\'b2\'c8\'ab\'b5\'c4. \'b5\'b1\'c8\'bb\'c8\'e7\'b9\'fb\'bd\'f6\'bd\'f6\'ca\'c7test\'ca\'c7ok\'b5\'c4. :)\
+
+\f0 */\uc0\u8232 \'a0 \'a0 BUG_ON(nreaders<0);\u8232 \'a0 \'a0 BUG_ON(nwriters<0);\
+\uc0\u8232 \'a0 \'a0 mutex_lock(&fullstop_mutex);\u8232 fullstop = FULLSTOP_DONTSTOP;\u8232 \'a0 \'a0 g_rb = kzalloc(nwriters * sizeof(struct ring_buffer), GFP_KERNEL);\u8232 \'a0 \'a0 if (NULL == g_rb)\{\u8232 \'a0 \'a0 \'a0 \'a0 firsterr = -ENOMEM;\u8232 \'a0 \'a0 \'a0 \'a0 goto exception;\u8232 \'a0 \'a0 \}\u8232 \'a0 \'a0\'a0\
+/* Eric: 
+\f1 \'b4\'cb\'be\'e4\'b6\'e0\'d3\'e0
+\f0 . */\uc0\u8232 \'a0 \'a0 g_rb = ring_buffer_alloc(ring_buffer_size);\
+\uc0\u8232 \'a0 \'a0 g_writer_info = kzalloc(nwriters * sizeof(struct info), GFP_KERNEL);\'a0\u8232 \'a0 \'a0 if (NULL == g_writer_info)\{\u8232 \'a0 \'a0 \'a0 \'a0 firsterr = -ENOMEM;\u8232 \'a0 \'a0 \'a0 \'a0 goto exception;\'a0\u8232 \'a0 \'a0 \}\u8232 \'a0 \'a0 writer_tasks = kzalloc(nwriters * sizeof(writer_tasks[0]),\u8232 \'a0 GFP_KERNEL);\u8232 \'a0 \'a0 if (NULL == writer_tasks)\{\u8232 \'a0 \'a0 \'a0 \'a0 firsterr = -ENOMEM;\u8232 \'a0 \'a0 \'a0 \'a0 goto exception;\u8232 \'a0 \'a0 \}\u8232 \'a0 \'a0 g_reader_id = kzalloc(nreaders * sizeof(int), GFP_KERNEL);\u8232 \'a0 \'a0 if (NULL == g_reader_id)\{\u8232 \'a0 \'a0 \'a0 \'a0 firsterr = -ENOMEM;\u8232 \'a0 \'a0 \'a0 \'a0 goto exception;\u8232 \'a0 \'a0 \}\u8232 \'a0 \'a0 for (i = 0; i < nwriters; i++)\{\u8232 \'a0 \'a0 \'a0 \'a0 writer_tasks[i] = kthread_run(rb_writer, &g_writer_info[i],\u8232 \'a0"rb_writer");\
+\uc0\u8232 \'a0 \'a0 \'a0 \'a0\'a0/* Eric: 
+\f1 \'ba\'f6\'c2\'d4\'c1\'cb\'b7\'b5\'bb\'d8\'d6\'b5\'bc\'ec\'b2\'e2
+\f0 . */\uc0\u8232 \'a0 \'a0 \}\u8232 \'a0 \'a0\'a0\u8232 \'a0 \'a0 reader_tasks = kzalloc(nwriters * sizeof(reader_tasks[0]),\u8232 \'a0 GFP_KERNEL);\u8232 \'a0 \'a0 if (NULL == reader_tasks)\{\u8232 \'a0 \'a0 \'a0 \'a0 firsterr = -ENOMEM;\u8232 \'a0 \'a0 \'a0 \'a0 goto exception;\u8232 \'a0 \'a0 \}\u8232 \'a0 \'a0 for (i = 0; i < nreaders; i++)\{\u8232 \'a0 \'a0 \'a0 \'a0 reader_tasks[i] = kthread_run(rb_reader, &g_reader_id[i],\u8232 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 "rb_reader"); \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0\u8232 \'a0 \'a0\'a0\
+	/* Eric: ditto. */\uc0\u8232 \'a0 \'a0 \}\
+\
+/* Eric: 
+\f1 \'b2\'bb\'d0\'e8\'d2\'aa\'d5\'e2\'b8\'f6
+\f0 notifier, 
+\f1 \'d2\'f2\'ce\'aa\'d5\'e2\'b8\'f6module\'c0\'ef\'b2\'bb\'d2\'c0\'c0\'b5\'d3\'daCPU. 
+\f0 */\uc0\u8232 \'a0 \'a0 register_reboot_notifier(&rb_nb);\u8232 mutex_unlock(&fullstop_mutex);\u8232 \'a0 \'a0 return 0;\u8232 exception:\u8232 mutex_unlock(&fullstop_mutex);\u8232 \'a0 \'a0 ring_buffer_exit();\u8232 return firsterr;\u8232 \}\u8232 \u8232 \u8232 \u8232 module_init(ring_buffer_init);\u8232 module_exit(ring_buffer_exit);\u8232 \
+rb.h 
+\f1 \'cd\'b7\'ce\'c4\'bc\'fe
+\f0 ---------\
+#ifndef RB_H\'a0\uc0\u8232 #define RB_H\u8232 struct ring_buffer\{\u8232 \'a0 \'a0 struct list_head head;\u8232 \'a0 \'a0 int size;\u8232 \'a0 \'a0 int cur_size;\u8232 \'a0 \'a0 spinlock_t lock;\u8232 \};\u8232 struct ring_buffer_node\{\u8232 \'a0 \'a0 struct list_head node;\u8232 \'a0 \'a0 void* data;\u8232 \};\u8232 \u8232 struct info\{\u8232 \'a0 \'a0 int id;\u8232 \'a0 \'a0 void *data;\u8232 \};\u8232 #endif\
+\pard\pardeftab720
+\cf2 \
+\pard\pardeftab720\sa56
+\cf2 \
+\
+Makefile:\
+obj-m = rb.o\uc0\u8232 all:\u8232 make -C /lib/modules/`uname -r`/build M=`pwd`\'a0\u8232 clean:\'a0\u8232 rm -rf *.o *.ko *.mod.c modules.order Module.symvers}

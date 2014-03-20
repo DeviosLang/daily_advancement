@@ -1,0 +1,67 @@
+1:云计算与大数据
+云计算：
+    IaaS：亚马逊AWS，OpenStack，CloudStack
+    PaaS：Sae，通过互联网就直接能使用开发平台，不需要本地安装各类的开发环境
+    Saas:Office365，通过互联网就直接能使用这个软件应用，不需要本地安装
+云计算的应用
+ 亚马逊:提供了两种服务：
+     1）简单的存储服务（simple storage service，s3）
+     2） 弹性计算云（Elastic Compute Cloud，EC2）
+ salesforce平台：包括关系型数据库、用户界面选项、企业逻辑以及一个名为Apex的集成开发环境
+ IBM的蓝云
+    1）基础层采用IBM System P（就是IBM的power）
+    2）虚拟层采用基于Xen的虚拟机运行Linux操作系统
+    3）管理层采用IBM Enterprise Workload Manageer提供管理，该管理层监控CPU需求，并利用业务策略来为每个任务分配CPU资源
+ 大数据和云计算的关系
+  1）云计算技术就是一个容器，大数据好比存放在这其中的水，大数据就是要依靠云计算技术来进行存储和计算
+  2）hadoop是基础，给云服务或云应用提供存储和计算技术
+    
+ 2：haddop起源
+   hadoop组件：common，hdfs，mapreduce（mrv1，mrv2）
+   
+   goole的十个核心技术，分为四大类：
+   -分布式基础设施：GFS，Chuby（分布式搜），protocol buffer（rpc）
+   -分布式大规模数据处理：MapReduce、Sawzall
+   -分布式数据库技术：BigTable（类似于hadoop中的hBase）和数据库Sharding
+   -数据中心优化技术：数据中心高温化，12V电池和服务器整合
+   GFS架构 
+  hadoop特点
+    1）分布式文件系统的备份恢复机制，以及MapReduce的任务监控保证了分布式处理的可靠性
+    2）框架可以运行在任何普通PC上
+    3）不论是存储的可扩展还是计算的可扩展都是Haddop的设计根本    4）分布式文件系统的高效数据交互实现，以及MapReduce结合LocalData处理的模式，为高效处理海量的信息做了基础准备。    
+3：hadoo架构简介
+   hadoop组件：common，hdfs，mapreduce（mrv1，mrv2）
+   common组件：
+     1）common组件是Hadoop的基础，提供了一些Hadoop IO，压缩，RPC通信，序列化等功能
+     2）common组件同事可以利用JNI方法调用C/C++语言编写的native库，加速了如数据压缩，数据校验等功能。
+   HDFS组件：
+     1）采用流式数据访问模式，可以用来存储超大文件盒海量数据，具有高吞吐率，方便部署，分布式存储管理的特点。
+     2）HDFS集群中拥有两种节点（名称节点Namenode和数据节点DataNode），名称节点在内存中保存着文件数据块映射的映像信息和整个文件系统的名字空间，而数据节点负责存储和读取数据文件。
+    namenode就是：元数据
+    datannodes就是：存数据的区域。
+4：hadoop生态系统
+5：hadoop发行版
+    1）cloudera CDH
+    2）Hortonworks HDP
+    3）Intel Distribution
+    4）IBM BigInsight
+6：hadoop版本选择
+   版本分为两种
+   1）hadoop1.0：
+      a）0.20.x
+      b）0.21.x
+      c）0.22.x
+   2）Hadoop2.0
+      a）0.23.x
+      b）2.x
+      hadoop2.0与1.0是一套全新的架构，均包含HDFS Federation和YARN两个系统，相比0.23.x，2.x新增了NmaeNodeHA和Wire-compatibility两个特性
+   
+    版本的选择需考虑一下介个方面：
+    1）是否支持文件追加功能
+    2）是否支持HDFS文件链接
+    3）是否能保证hadoop的安全性
+    4）是否加入了NameNode HA(hadoop 0.21.x,0.22.x,2.x)
+    5)是否加入了HDFS Federation和YARn（hadoop 0.23.x，2.x）
+    
+    hadoop官网：hadoop.apache.org
+    www.clouderm.
