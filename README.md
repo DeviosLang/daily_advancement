@@ -1,4 +1,3 @@
 daily_advancement
 =================
 
-advancement
