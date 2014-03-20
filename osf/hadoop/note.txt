@@ -64,4 +64,99 @@
     5)是否加入了HDFS Federation和YARn（hadoop 0.23.x，2.x）
     
     hadoop官网：hadoop.apache.org
-    www.clouderm.
+    hadoop的生态系统：hive hbase pig oozie 
+1：hdfs的安装与部署
+    setp1:hadoop二进制文件的下载
+    http://hadoop.apache.org/releases.html
+    下载：hadoop 1.2.1和hadoop 2.0.3-alpha
+    hdfs部署有三种模式：
+      a)独立模式;b)伪分布模式;c)分布式模式
+     从这个地址可以得到配置方法：
+     http://hadoop.apache.org/docs/r1.2.1/cluster_setup.html
+    
+    hadoop在centos下两节点的配置：
+    节点1：master：IP：192.168.188.111 hostname:master
+    节点2：slave1：IP：192.168.188.112 hostname:slave1
+
+    step1：install java1.6
+         yum install java-1.6* -y
+         echo export JAVA_HOME=/usr/lib/jvm/java-1.6.0 > /etc/profile
+    step2: 配置centos的环境
+    1:配置节点1的hostname：
+     a)修改/etc/sysconfig/network
+       NETWORKING=yes
+       HOSTNAME=master    
+     b)修改/etc/hosts
+       127.0.0.1   master
+       192.168.188.111 master
+       192.168.188.112 slave1
+    2:配置节点2的hostname:
+     a)修改/etc/sysconfig/network
+       NETWORKING=yes
+       HOSTNAME=slave1
+     b)修改/etc/hosts
+       127.0.0.1   master
+       192.168.188.111 master
+       192.168.188.112 slave1
+     3:配置ssh访问
+     节点1执行的命令
+     ssh-keygen
+     ssh-copy-id slave1
+     节点2执行的命令
+     ssh-keygen
+     ssh-copy-id master
+     这样能够让两个不用输入密码就能够直接ssh登陆
+    step3:配置hadoop  
+     1：节点1的配置：
+      a)修改hadoop-1.2.1/conf/core-site.xml 
+        
+       <?xml version="1.0"?>
+       <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+
+       <!-- Put site-specific property overrides in this file. -->
+
+       <configuration>
+           <property>
+             <name>fs.default.name</name>
+             <value>hdfs://192.168.188.111:9000</value>
+           </property>
+        </configuration>
+        b)修改hadoop-1.2.1/conf/hdfs-site.xml 
+          <?xml version="1.0"?>
+          <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+
+          <!-- Put site-specific property overrides in this file. -->
+
+         <configuration>
+           <property>
+            <name>dfs.replication</name>
+            <value>1</value>
+          </property>
+         </configuration> 
+        c)修改hadoop-1.2.1/conf/mapred-site.xml
+          <?xml version="1.0"?>
+          <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+
+          <!-- Put site-specific property overrides in this file. -->
+
+          <configuration>
+            <property>
+             <name>mapred.job.tracker</name>
+             <value>master:9001</value>
+            </property>
+          </configuration>
+        d)修改hadoop-1.2.1/conf/hadoop-env.sh 
+         export JAVA_HOME=/usr/lib/jvm/java-1.6.0
+        e)在hadoop-1.2.1/bin下执行
+          ./hadoop namenode -format
+          来格式化hadoop的namenode
+      setp4:启动hadoop
+        进入hadoop-1.2.1/bin
+        执行./start-all.sh
+        通过jps在master和slave1中来查看当前的进程是否启动正确
+        master中有如下进程： NameNode JobTracker SecondaryNameNode
+        slave1中有如下进程：DataNode TaskTracker
+      至此环境初步搭建完成
+这个里除了hadoop所有的shell命令：hadoop.apache.org/docs/r1.2.1/commands_manual.html
+     
+2：HDFS 
