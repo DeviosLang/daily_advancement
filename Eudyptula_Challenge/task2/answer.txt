@@ -1,6 +1,6 @@
 I get the new kernel source on "git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git".But you should take some times.It is too large.:(Internet speed is bad.
 
-build the kernel under the commands:
+build the kernel under the commands:(when you do this you should get the rootpower)
 make mrproper
 make oldconfig or make localmodconfig[note: enable CONFIG_LOCALVERSION_AUTO=y by hand]
 make dep(but i think this command is unnecessary now.)
@@ -12,7 +12,7 @@ make install
 the last step is config the grub.conf.and you could set your new kernel to be boot first.
 make oldcnfig:It will copy current .confg,our new kerenl's configuration base on the contents of my existing.But it will ask my the new config symbols which update by my new kernel.
 make loalmodconfig:To make the process of configuration easier.It runs lsmod to find all the modules loaded on my current running system.It will read all the Makefiles to map which CONFIG enables a module and It will read the Kconfig files to find the depencies and selects that may be neede to support a CONFIG.Finally, it reads the .config file and removes any module "=m" that is not needed to enable the currently loaded modules.So you get a .config which contain all the useful mdoule in our machine, it will take mch less time to build the kernel.
-If i enable CONFIG_LOCALVERSION_ATUO=y,i get the linux kernel version like this "3.14.0-rc5+"
+If i enable CONFIG_LOCALVERSION_ATUO=y,i get the linux kernel version like this "3.14.0-rc7-00033-g8878439-dirty"
 If i unable CONFIG_LOCALVERSION_ATUO=n,i get the linux kernel version like this "3.14.0-rc5+"
 To look the Makefile /script/setlocalversion, line 56 show if i have .git, it will add a '+',If i enable CONFIG_LOCALVERSION_ATUO, it will add the version.
 
