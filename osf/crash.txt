@@ -1,0 +1,22 @@
+crash collection tools:包括LKCD/Kdump
+crash dumps的使用工具:lcrash,crash gdb
+LKCD:内存大小限制在4G以下,而且对于处理大量的机器不太合适，他在同一个子网只能有一个服务器，通过网络的方式，来接受dump
+Kdump:是一个更灵活的工具，他扩展了网络能力，他的目标是代替LKCD；
+      Kdump支持网络dump，它能够dump到本地磁盘，NFS，CIFS/FTP/SSH共享的服务。
+kdump有两个主要的组件：Kdump和Kexec
+Kexec:是一个快速boot linux kernel的机制，它能够再从一个已经运行的linux kernel的上下文boot一个linux kernel而无需通过BIOS。
+Kdump是一个新的kernel crash dump机制。
+CONFIG:
+1)config the kernel to enable kexec system call:This parameter tells the system to use kexec to skip BIOS and boot kernels. It is critical for the functionality of Kdump.(CONFIG_KEXEC=y)
+2)Enable kernel crashe dumps:Crash dumps need to be enabled.Without htis options, Kdump will be useless.(CONFIG_CRASH_DUMP=y)
+3)Optional:Enable high memery support(for 32-bit systems):You need to configure this parameter in order to support memory allocations beyound the 32-bit(4GB) barrier.This may not be applicable if your system has less than 4GB RAM or if you're using a 64-bit system.(CONFIG_HIGHMEM4G=y)
+4)Optional:Disable Symmetric Multi-Processing(SMP) support:Kdump can only work with a single processor.If you have only a single processor or you run your machine with SMP support disabled, you can safely set this parameter to (n).(CONFIG_SMP=y)
+On the other hand,  if your kernel must use SMP for whatever reason, you will want to set this directive to(y). However, you will have to remeber this during the Kdump configuration. We will have to set Kdump to use only a single CPU.It is very important that you remember this! To recap, you can either disable SMP during the compilation OR enable SMP but instruct Kdump to use a single CPU. This instruction is done by changing the Kdump configuration file. It is NOT a part of the kernel compilation configuration. [The configuration file change requires that one of the options be configured in a particular manner. Specifically, the directive below needs to be set in the Kdump configuration file under /etc/sysconfig/kdump after the kernel has been compiled and installed.(KDUMP_COMMANDLINE_APPEND="maxcpus=1")]
+5)enable sysfs file system support:(CONFIG_SYSFS=y)
+6)enable /proc/vmcore support:this configuration allows Kdump to save the memory dump to /proc/vmcore. Although in your setup you may not use the /proc/vmcore as the dump device, for greatest compatibility, it is recommended you set this parameter to (y).(CONFIG_PROC_VMCORE=y)
+7)Configure the kernel with debg info:This parameter means the kernel will be built with debug sysmbols. While this will increase the size of the kernel image, having the symbols available is very useful for in-depth analysis of kernel crashes,as it allows you to trace the problems not only to problematic function calls causing the crashed, but also the specific linus in relevant sources.(CONFIG_DEBUG_INFO=y)
+8)Configure the start section for reserved RAM for the crash kernel:This is a very important setting to pay attention to. To work properly, the crash kernel uses a piece of memory specially reserved to it. The start section for this memory allocation needs to be defined. For instance, if you intend to start the crash kernel RAM at 16MB(You may use other values that suit your operational needs. Make sure the allocation does not confilict with reserved memory used by the kernel or kernel modules),then the value needs to be set to the following(in hexadecimal):(CONFIG_PHYSICAL_START=0x1000000)
+9)kdump package & files
+    Kdump packages: Kdump(Dump package)/Kexec-tools(Kexec package)/Kernel-debuginfo*(Crash analysis package(optional);you will be using the most compatible version of Kdump and Kexec.
+   Kdump files: /etc/init.dkdump(Kdump service);/etc/sysconfig/kdump(Kdump configuration file);/usr/share/doc/pakages/kdump(Kdump documentation)
+
