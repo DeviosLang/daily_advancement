@@ -387,6 +387,9 @@ http://eudyptula-challenge.org
 原子操作：
 内存屏障：先网上搜搜          
       
- 
- 
- 
+对linux不熟悉的可以看 ftrace这个小模块，里头会有很多的简单的小模块。内核调试1)printk;2)kdump;
+eric's kernel mail list:lkml kvm xen netdev
+
+会引起睡眠的一些操作:msleep(), kmalloc()
+memcpy():对于访问内核空间的页面之间的copy是不会发生睡眠的。而如果拷贝的有用户空间的可能会发生缺页，然后进入睡眠。内核空间的页面都是映射好的，所以不会睡眠。
+内存访问越界：如果是kmalloc申请的那么不会睡眠，如果是vmalloc申请的可能会睡眠.

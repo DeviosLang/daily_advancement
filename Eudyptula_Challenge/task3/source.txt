@@ -1,0 +1,2 @@
+https://www.kernel.org/doc/Documentation/zh_CN/SubmittingPatches
+可以看这个汉语版本的文档方便理解
