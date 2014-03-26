@@ -1,0 +1,1 @@
+http://www.dedoimedo.com/computers/crash-book.html

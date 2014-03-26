@@ -1,0 +1,2 @@
+http://www.mjmwired.net/kernel/Documentation/lockdep-design.txthttp://www.mjmwired.net/kernel/Documentation/lockdep-design.txt
+http://lwn.net/Articles/371986/

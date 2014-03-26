@@ -387,6 +387,173 @@ http://eudyptula-challenge.org
 原子操作：
 内存屏障：先网上搜搜          
       
- 
- 
- 
+对linux不熟悉的可以看 ftrace这个小模块，里头会有很多的简单的小模块。内核调试1)printk;2)kdump;
+eric's kernel mail list:lkml kvm xen netdev
+
+会引起睡眠的一些操作:msleep(), kmalloc()
+memcpy():对于访问内核空间的页面之间的copy是不会发生睡眠的。而如果拷贝的有用户空间的可能会发生缺页，然后进入睡眠。内核空间的页面都是映射好的，所以不会睡眠。
+内存访问越界：如果是kmalloc申请的那么不会睡眠，如果是vmalloc申请的可能会睡眠.
+
+
+原子操作：不能被CPU和其他CPU所中断的执行指令或指令流。
+
+CPU中原子操作的实现：
+1）CPU基本的原子操作
+2）LOCK前缀
+3）自动带LOCK的指令
+CPU平台本身可以保证的原子操作
+1）读或者写一个字节（因为访问一个字节总是对齐的）
+2）读或者写一个对齐的16-bit的数据
+3）读或者写一个对齐的32-bit的数据
+4）读或者写一个对齐的64-bit数据(64位CPU)
+另外：如下两个特性仅仅在x86平台上才是有效的，而上面4个是所有平台通用的。
+    1）在32-bit的数据总线上访问一块cache禁止的16数据(>=Pentium)
+    2）在一个cache line中访问不对齐的16,32,64,位数据(>=P6 pamily)
+LOCK前缀：
+    -指令前带LOCK前缀破事CPU做独占的内存访问
+    -xchg自动带有LOCK前缀
+LOCK在不同CPU版本的实现
+    -在较老的CPU上，产生LOCK信号以用来锁总线
+    -在>=P6 family,锁cache line（是几级cache line）
+LOCK前缀
+ 代码示例：
+  cmpxchg(ptr, old, new):比较*ptr和old的值，如果相等则*ptr=new,在任何时候该函数返回ptr的初始值，因为，如果想要知道ptr的值是否被new替换，只需要检查其返回值是否与old相等。
+  #define cmpxche(ptr,old,new)
+        __cmpxchg(ptr,old, netw,sizeof(*(ptr))
+  #define __cmpxchg(ptr, old, new, size)
+     __raw_cmpxchg((ptr), (old),(new),(size), LOCK_PREFIX)
+
+自动带LCOK前缀的指令
+ a）xchg
+ b）事务内存（TSX on intel）
+   可以自定义一块transaction region，然后可以在区域结束的时候原子提交，如果成功提交，则其CPU可以看到该区域的所有更改，如果提交失败则撤销该区域的所有更改操作，进而转入到程序提供的abort代码（失败的场景：a.两个CPU都在对同一个事务内存操作，CPU1和CPU2，CPU1的操作是只读去事务内存的内容，CPU2是修改事务内存的内容，CPU1读取了数据后，CPU2修改了事务内存，然后CPU2提交事务的时机又早于CPU1，那么CPU1读取的是old的数据，那么这时候CPU1会发生事务提交失败；b.例如powerpc中实现的事务内存，如果在操作事务内存期间，发生了中断，那么提交的事务内存就会失败） 
+
+Linux Kernel中的原子操作
+两种主要的类型：
+   -atiomic_t 的数据
+   
+     atatomic_t操作： 
+      --include/linux/atomic.h:与平台无关的公共操作
+      --include/asm/atomic.h:与平台相关的操作
+     例如：
+     atomic_xchg(v,new)
+     atomic_cmpxchg(v,old,new)
+     atomic_add_negative(i,v)
+     atomic_add_unless(v,a,u)
+   -bit操作
+     -原子性的未操作
+     -常用操作：
+        set_bit(nr, *addr)
+        change_bit(nr, *addr)
+        test_and_set_bit(nr,*addr)
+        test_and_clear_bit(nr,*addr)
+        test_and_change_bit(nr, *addr)
+       另外，非原子的位操作
+          __set_bit(nr, *addr)
+          __clear_bit(nr, *addr)
+          test_bit(nr, *addr)
+       说明：原子的和非原子的test_bit是同一个函数，因为对一个对齐的unsigned lang的操作是原子的。
+   -其他指令
+     -xchg()
+     -cmpxchg()
+     -cmpxchg_double()
+
+内存屏障：
+  就是强制规定内存访问次序
+产生原因：
+  -编译器优化
+  -CPU的乱序和推测执行
+
+消除编译器导致的乱序
+  -asm volatile("":::"memory")
+  -C语言中的volatile关键字
+X86的内存序列
+   -相同类型的操作(read vs read;write vs write)不能被乱序
+      A=B=0
+      cpu 0                      cpu 1
+    write 1->A                 read B->R1
+    write 1->B		       read A->R2
+     不存在R1=1 &&R2=0
+   -write不能乱序到read前面
+     A=B=0
+      cpu 0                     cpu1
+    read A->R1                read B->R2
+    write 1->B                write 1->A
+     不存在R1=1 &&R2=1
+
+   -read可能乱序到write前面
+     A=B=0
+      cpu 0                    cpu1
+     write 1->A              write 1->B
+     read B->R1              read A->R2
+      存在R1=0 && R2=0
+   -CPU内部内存访问允许bypass(因为写有一个buffer，也就是本cpu写入后，还没同步到内存，仅仅在自己的buffer中，别的CPU有一段时间无法安置，但是本CPU的读可以从buffer中直接读取)
+     A=B=0
+      cpu 0                    cpu1
+     write 1->A              write 1->B
+     read A->R1              read B->R3
+     read B->R2              read A->R4
+       存在R2 = 0 && R4=0
+   -write全局可见的(在cpu0看到的写的顺序，那么其他cpu看到的一定也是这个顺序)
+     A=B=0
+       cpu 0         cpu 1        cpu2
+     write 1->A    read A->R1   
+                   write 1->B    read B->R2
+                                 read A->R3
+        不存在R1=1 && R2=1 && R3=0
+x86上阻止读与写之间的乱序：
+   -mfence:在这个指令之前的所有的读和写的指令都变成全局可见的。
+
+Linux Kernel中的内存屏障
+   -与其他平台相比，特别是alpha(基本上读与读，写与写都可能乱序),x86是一个相对来说比较强序(strong order)的平台, 但是linux kernel服务于各种平台，所以有各种各样的memory barrier。
+  -主要的barrier:
+    -barrier():用来防止由编译器导致的乱序
+    -smp_rmp():所有位于此函数之前的读操作不能越过此函数
+    -smp_wmb():所有位于此函数之前的写操作不能越过此函数
+    -smp_mb():所有位于此函数的任意读写操作不能越过此函数
+    -smp_read_barrier_depends():数据依赖屏障
+     e.g:
+      read a
+      read buffer[a]
+     注意与控制依赖的区别：
+      read a
+      if(a)
+        read buffer[a]
+    -memory barrier的使用规则
+      smp_rmb() VS.smp_wmb() or smp_mb()
+      smp_read_barrier_depends()VS. smp_wmb() or smp_mb()
+      smp_mb() VS. smp_mb()
+    -隐含的屏障:
+      -所有的smp_xx()屏障除了smp_read_barrier_depends()都隐含了编译屏障
+      -对于有更新操作且返回旧值或新值得原子操作都会隐含全屏障，e.g:xchg()/cmpxchg()/test_and_set_bit()
+
+   Memory barrier VS. LOCK
+    -lock()和unlock()不隐含全屏障，它允许上下两端的代码进到了临界区，但不能穿透临界区:e.g
+     a=1;            lock();
+     lock();         b=2;
+     c=3;            c=3;
+     unlock();       a=1;
+     b=2;            unlock();
+
+   什么时候需要内存屏障:
+     -在设计lockless的算法时候，必定要考虑memory barrier
+     -在CPU和device之间做IO的时候
+   使用内存屏障的一个例子
+     kvm的内存虚拟化中，有一个lockless的算法:
+     -walk_shadow_page_lockless_begin()与
+      walk_shadow_page_locakless_end()之间可以访问页表
+     -在释放页表时候，如果vcpu处于GUEST状态，需要发送中断(IPI)给这个VCPU。
+     -所以基本思想是，在做lockless访问的时候，将这个CPU的中断禁止，然后将其状态改为处于GUEST的状态。
+     为什么这个lockless的算法需要内存屏障呢？他为了防止如下例子的发生。
+     CPU0                   CPU1
+   Read page table A
+   IRQ disable
+                         free page table A and see
+                         VCPU is not in guest mode
+   Set vcpu 0 in guest 
+   mode！！！accessing A
+   is invalid
+      说白了对于walk_shadow_page_lockless_begin就是防止，一个读操作优化到一个写操作前面。 考虑：那么是否此处仅仅使用一个读屏障就行了。 
+      那么对于walk_shadow_page_lockless_begin就要防止，mode的修改不被优化到别的写操作之前。可能会出问题
+
+

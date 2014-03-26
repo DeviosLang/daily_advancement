@@ -1,0 +1,13 @@
+1)I modify the Makefile  'EXTRAVERSION' , like this EXTRAVERSION = -eudyptula(the old is -rc7),Next I compile the kernel. Then i get a new kernel named 3.14.0-eudyptula-00033-g8878439-dirty.
+2)I under the document SubmittingPatches,get a patch obout the new Makefile.
+Next,I show the detail obout the patch.
+--- linux/Makefile.orig 2014-03-24 19:55:42.249676836 +0800
++++ linux/Makefile      2014-03-24 19:55:29.251421439 +0800
+@@ -1,7 +1,7 @@
+ VERSION = 3
+ PATCHLEVEL = 14
+ SUBLEVEL = 0
+-EXTRAVERSION = -rc7
++EXTRAVERSION = -eudyptula
+ NAME = Shuffling Zombie Juror
+产生这个脚本使用的命令是：
