@@ -1,39 +1,40 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <asm/delay.h>
-#include <linux/slab.h>
+#include <linux/delay.h>
 
-int do_work( int * my_int, int retval ) {
-	int x;
-	int y=*my_int;
-	int z;
-	
-	for(x=0;x< * my_int;++x) {
+MODULE_AUTHOR("dump shell");
+MODULE_DESCRIPTION("code style test");
+MODULE_LICENSE("GPL");
+
+static int do_work(int *my_int)
+{
+	int x, *y = *my_int;
+
+	for (x = 0; x < y; ++x)
 		udelay(10);
-	}
 
-	if (y < 10 )
-		// That was a long sleep, tell userspace about it
-		printk("We slept a long time!");
+	/*
+	 * That was a long sleep, tell userspace about it
+	 */
+	if (y < 10)
+		pr_info("We slept a long time!");
 
-	z = x * y;
-
-	return z;
+	*my_int = x * y;
+	return 0;
 }
 
-int
-my_init (void)
+
+static init __init my_init(void)
 {
+	int r;
 	int x = 10;
 
-	x = do_work(&x, x);
-
-	return x;
+	return do_work(&x);
 }
 
-void my_exit( void )
+static void __exit my_exit(void)
 {
-	return;
+
 }
 
 module_init(my_init);
