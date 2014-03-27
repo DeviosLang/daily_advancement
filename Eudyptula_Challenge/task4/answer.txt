@@ -1,0 +1,4 @@
+在kerne所在的根目录，使用 ./scripts/checkpatch.pl -f myfile 来检测是否有问题
+1)使用 sed 's/\r$//' < coding_style.c > coding_style.c1来消除每一行结尾的DOS的字符;
+2)在内核中使用pr_debug等相关的操作代替printk。
+3)使用 include/delay.h来代替asm/delay.h
