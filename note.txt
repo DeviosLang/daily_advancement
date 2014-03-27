@@ -1,2 +1,7 @@
-http://www.mjmwired.net/kernel/Documentation/lockdep-design.txthttp://www.mjmwired.net/kernel/Documentation/lockdep-design.txt
-http://lwn.net/Articles/371986/
+ http://www.mjmwired.net/kernel/Documentation/lockdep-design.txt
+ http://lwn.net/Articles/371986/
+-how to convert th lin endings in a text form dos to unis format
+ http://www.microhowto.info/howto/convert_the_line_endings_in_a_text_file_from_dos_to_unix_format.html
+-kernel newbies
+ http://kernelnewbies.org/
+
