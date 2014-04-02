@@ -557,3 +557,79 @@ Linux Kernel中的内存屏障
       那么对于walk_shadow_page_lockless_begin就要防止，mode的修改不被优化到别的写操作之前。可能会出问题
 
 
+Linux Kernel常用的数据结构
+List
+- list,hlist,rcu list
+RB tree
+
+hlist常用接口
+-测试：
+ hlist_empyt()
+ hlist_unhashed()
+-遍历
+ hlist_for_each_entry()
+ hlist_for_each_entry_safe()
+
+rcu list常用接口
+包括：rcu list和rcu hlist <linux/linux/rculist.h>
+常用接口：
+ -初始化：INIT_LIST_HEAD_RCU();用hlist_first_rcu()来初始化hlist_head
+ -读侧：
+  读侧需要使用rcu来保护list/hlist
+  list_for_each_entry_rcu();hlist_for_each_entry_rcu()
+ -写测
+  需要自己做并发控制，在释放资源的时候需要使用rcu的同步机制来和读侧进行同步
+  list_add_rcu();list_add_tail_rcu();list_del_rcu();list_replace_rcu();list_splice_init_rcu();
+  hlist_del_rcu();hlist_replace_rcu();hlist_add_head_rcu();
+
+RB tree
+ -RB_entry
+ -使用红黑树
+   初始化根节点：
+      struct  rb_root mytree = RB_ROOT
+ -红黑树的搜索，左孩子小于右孩子
+ -使用红黑树
+   插入节点：利用上述的搜索算法找到要插入的位置然后调用rb_link_node(node, parent, parent, rb_link)将新节点插入到tree，最后调用rb_insert_color(node, root)来配色
+  -删除一个节点：rb_erase(victim,root)
+  -其他：
+   rb_replace_node(old, new, tree)
+   rb_fist(tree);rb_last(tree);rb_next();rb_prev();
+
+内存管理：
+   -内存初始化
+   -memblock(bootmem)分配器
+   -page分配器
+   -slab分配器
+
+内存初始化：
+  -内存布局探测图：E820图
+  -E820介绍
+   在x86的机器上，由bios提供的中断，中断号是0x15，在调用的时候AX寄存器必须为0xE820，该中断需要连续调用，每次返回一段内存的空间起始地址和大小以及他的属性（可用的RAM or bios保留的）
+  -e820详细的用法：
+    输入：
+     EAX=0xE820
+     EBX：用来表示读取信息的Index，初始化为0，中断返回后该寄存器存放下次要获取的信号的需要。
+     ES:DI：用来保存信息的buffer
+     ECX：buffer的大小
+     EDX：签名，必须为"SMAP"
+    输出：
+     CF：如果flags寄存器中的CF被置位表示调用出错
+     EAX：里面返回"SMAP",是否出错
+     ES:DI：对应的buffer，里面存放获取到的信息
+     ECX：BIOS在buffer中存放的数据大小
+     EBX：BIOS返回的下次调用的序号，如果返回为0，则表示无后续信息
+    linux kernel中的e820使用：
+     -boot阶段，会调用detect_memory()->detect_memory_e820()->e820_print_map()
+      注意，bios只提供几种基本的类型，在e820_print_type()会遇到其他的类型，它是调用e820_add_region()添加进的其他几种类型，例如ACPI的memory region
+
+  memblock
+   -用于启动阶段的一个简单分配器，它负责page alloc初始化之前的内存分配器管理以及在系统boot阶段满足大内存的请求（请求大小超过page，alloc的最大限制）
+   -实现
+     所有状态保存在一个全局变量中:(memblock.c)
+     static struct memblock_memory_init_regions[INT_MEMBLOCK_REGIONS] __initdata_memblock
+     static struct memblock_region memblock_reserved_init_regions[INIT_MEMBLOCK_REGIONS] __initdata_memblock;
+    注意： __initdata_memb[E820MAX]lock的修饰，它位于.init段，在不支持memory hotplug的时候，初始化完了就会被释放。
+    memblock.memory:表示可用的内存
+    memblock.reserved:表示已经分配出去了的内存
+    连着都是struct memblock_type的结构（struct memblock_region, struct memblock_type）
+    

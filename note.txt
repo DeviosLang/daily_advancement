@@ -4,4 +4,5 @@
  http://www.microhowto.info/howto/convert_the_line_endings_in_a_text_file_from_dos_to_unix_format.html
 -kernel newbies
  http://kernelnewbies.org/
-
+-Linux下的Lds脚本连接简介
+ http://hubingforever.blog.163.com/blog/static/171040579201192472552886/
