@@ -6,3 +6,6 @@
  http://kernelnewbies.org/
 -Linux下的Lds脚本连接简介
  http://hubingforever.blog.163.com/blog/static/171040579201192472552886/
+-udev介绍
+ http://reactivated.net/writing_udev_rules.html
+

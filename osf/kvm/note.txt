@@ -632,4 +632,6 @@ RB tree
     memblock.memory:表示可用的内存
     memblock.reserved:表示已经分配出去了的内存
     连着都是struct memblock_type的结构（struct memblock_region, struct memblock_type）
-    
+ 
+1)分配给用户的page，里面那个页面来表示，这个页面来自那个node的，cpu怎么访问远端的node呢？（NUMA架构）
+2)对于page的cache是怎么能够提升CPU的cache的呢？
